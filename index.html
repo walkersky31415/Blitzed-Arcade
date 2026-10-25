@@ -725,6 +725,18 @@ async function hash(s){try{const b=await crypto.subtle.digest("SHA-256",new Text
 const say=(t,ok)=>{const m=$("lm");m.textContent=t;m.className=ok?"grn2":"err"};
 function fin(){$("lp").value="";show("menu")}
 function signIn(u,e){me=u;db.cur=e;save();fin()}
+  
+async function loadCloudProfile(user){
+  const {data,error}=await supabaseClient
+    .from("player_profiles")
+    .select("*")
+    .eq("user_id",user.id)
+    .maybeSingle();
+
+  if(error) throw error;
+  return data;
+}
+
 function adminAcct(){const a=def("Admin","");a.admin=true;a.coins=999999;a.skins=Object.keys(SK);a.bgs=Object.keys(BG);a.tts=Object.keys(TT);a.up=Object.fromEntries(Object.keys(UP).map(k=>[k,MAXL]));return a}
 async function auth(create){
 const e=$("le").value.trim().toLowerCase(),p=$("lp").value,n=$("ln").value.trim();
