@@ -351,6 +351,7 @@ input::placeholder,textarea::placeholder{color:#91a7c9}
 <div class="hero"><h1>BLITZED ARCADE</h1><p>Dodge rocks, grab coins, upgrade your ship. Guests can play instantly.</p>
 <div class="row">
 <button class="sec" onclick="show('shop')">🛒 Shop</button>
+<button class="sec" onclick="document.getElementById('ba-shop').style.display='block'">⚡ Admin Shop</button>
 <button class="sec" onclick="show('board')">🏆 Leaderboard</button>
 <button class="sec" onclick="show('ach')">🏅 Achievements</button>
 <button class="sec" onclick="show('coll')">📚 Collection</button>
@@ -455,7 +456,10 @@ input::placeholder,textarea::placeholder{color:#91a7c9}
 </section>
 
 <section id="s_prof" class="scr page"><div class="hero"><h1 style="font-size:44px">👤 PROFILE</h1></div>
-<div class="card col"><div id="pfTxt"></div><canvas id="pfC" width="600" height="160" style="width:100%;max-width:600px"></canvas><small class="mu">Your last 20 runs (score)</small></div><br><button class="sec" onclick="show('menu')">← Back</button></section>
+<div class="card col"><div id="pfTxt"></div><canvas id="pfC" width="600" height="160" style="width:100%;max-width:600px"></canvas>
+<small class="mu">Your last 20 runs (score)</small></div>
+<br><button class="sec" onclick="document.getElementById('ba-shop').style.display='block'">⚡ Admin Shop</button>
+<br><button class="sec" onclick="show('menu')">← Back</button></section>
 
 <section id="s_farm" class="scr page"><div class="hero"><h1 style="font-size:44px">🌾 SUNNY FARM</h1><p>Plant crops, wait, harvest. Crops keep growing while you're away from the game.</p></div>
 <div class="card col"><div id="fSt" class="mu"></div><div class="row" id="fSeeds"></div><div class="grid" id="fPlots" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))"></div>
