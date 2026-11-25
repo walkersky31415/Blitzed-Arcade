@@ -1749,7 +1749,6 @@ if(!db.set.seen){db.set.seen=1;save()}
       setKey("ArrowLeft",left,t);setKey("ArrowRight",right,t);
       setKey(" ",cross,t);
       setKey("Escape",circle,t);
-      if(square&&!prev.square){send(window,"keydown","e");send(window,"keyup","e");}
       if(triangle&&!prev.triangle){send(window,"keydown","e");send(window,"keyup","e");}
       if(l1&&!prev.l1){send(window,"keydown",String(Math.max(1,((window.__baHotbar||0)+3)%4+1)));send(window,"keyup",String(Math.max(1,((window.__baHotbar||0)+3)%4+1)));window.__baHotbar=((window.__baHotbar||0)+3)%4; }
       if(r1&&!prev.r1){window.__baHotbar=((window.__baHotbar||0)+1)%4;const k=String(window.__baHotbar+1);send(window,"keydown",k);send(window,"keyup",k);}
