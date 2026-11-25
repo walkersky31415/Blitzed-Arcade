@@ -1681,7 +1681,76 @@ if(!db.set.seen){db.set.seen=1;save()}
 </script>
 <!-- END BLITZED ARCADE ADMIN SHOP -->
 
-  
+ 
+<!-- BLITZED ARCADE - PS5 CONTROLLER SUPPORT -->
+<script>
+(function () {
+  let gamepadIndex = null;
+  const pressed = {};
+
+  window.addEventListener("gamepadconnected", function (event) {
+    gamepadIndex = event.gamepad.index;
+    console.log("PS5 Controller connected!");
+  });
+
+  window.addEventListener("gamepaddisconnected", function () {
+    gamepadIndex = null;
+    console.log("Controller disconnected");
+  });
+
+  function controllerLoop() {
+    const gamepads = navigator.getGamepads();
+    const gamepad = gamepadIndex !== null
+      ? gamepads[gamepadIndex]
+      : Array.from(gamepads).find(g => g && g.connected);
+
+    if (gamepad) {
+      const buttons = gamepad.buttons;
+      const axes = gamepad.axes;
+
+      const keys = {
+        ArrowUp: axes[1] < -0.5 || buttons[12]?.pressed,
+        ArrowDown: axes[1] > 0.5 || buttons[13]?.pressed,
+        ArrowLeft: axes[0] < -0.5 || buttons[14]?.pressed,
+        ArrowRight: axes[0] > 0.5 || buttons[15]?.pressed,
+        Enter: buttons[0]?.pressed,
+        Escape: buttons[1]?.pressed,
+        Space: buttons[2]?.pressed,
+        Shift: buttons[4]?.pressed
+      };
+
+      Object.entries(keys).forEach(([key, down]) => {
+        if (down && !pressed[key]) {
+          document.dispatchEvent(new KeyboardEvent("keydown", {
+            key: key,
+            bubbles: true
+          }));
+        }
+
+        if (!down && pressed[key]) {
+          document.dispatchEvent(new KeyboardEvent("keyup", {
+            key: key,
+            bubbles: true
+          }));
+        }
+
+        pressed[key] = down;
+      });
+    }
+
+    requestAnimationFrame(controllerLoop);
+  }
+
+  window.addEventListener("click", function startController() {
+    requestAnimationFrame(controllerLoop);
+    window.removeEventListener("click", startController);
+  }, { once: true });
+
+  console.log("Blitzed Arcade Controller Support Loaded!");
+})();
+</script>
+<!-- END PS5 CONTROLLER SUPPORT -->
+ 
 </body>
 </html>
 
