@@ -1682,74 +1682,201 @@ if(!db.set.seen){db.set.seen=1;save()}
 <!-- END BLITZED ARCADE ADMIN SHOP -->
 
  
-<!-- BLITZED ARCADE - PS5 CONTROLLER SUPPORT -->
+<!-- BLITZED ARCADE - PS5 DUALSENSE SUPPORT -->
 <script>
 (function () {
-  let gamepadIndex = null;
-  const pressed = {};
+  "use strict";
 
-  window.addEventListener("gamepadconnected", function (event) {
-    gamepadIndex = event.gamepad.index;
-    console.log("PS5 Controller connected!");
-  });
+  // Space Dodger already reads the Gamepad API directly in its own game loop.
+  // This bridge supplies keyboard-style controls to the other parent-page games
+  // and the same-origin Nitro Run / Void Runner game frames.
+  const held = new Map();
+  const previous = Object.create(null);
+  let raf = 0;
 
-  window.addEventListener("gamepaddisconnected", function () {
-    gamepadIndex = null;
-    console.log("Controller disconnected");
-  });
-
-  function controllerLoop() {
-    const gamepads = navigator.getGamepads();
-    const gamepad = gamepadIndex !== null
-      ? gamepads[gamepadIndex]
-      : Array.from(gamepads).find(g => g && g.connected);
-
-    if (gamepad) {
-      const buttons = gamepad.buttons;
-      const axes = gamepad.axes;
-
-      const keys = {
-        ArrowUp: axes[1] < -0.5 || buttons[12]?.pressed,
-        ArrowDown: axes[1] > 0.5 || buttons[13]?.pressed,
-        ArrowLeft: axes[0] < -0.5 || buttons[14]?.pressed,
-        ArrowRight: axes[0] > 0.5 || buttons[15]?.pressed,
-        Enter: buttons[0]?.pressed,
-        Escape: buttons[1]?.pressed,
-        Space: buttons[2]?.pressed,
-        Shift: buttons[4]?.pressed
-      };
-
-      Object.entries(keys).forEach(([key, down]) => {
-        if (down && !pressed[key]) {
-          document.dispatchEvent(new KeyboardEvent("keydown", {
-            key: key,
-            bubbles: true
-          }));
-        }
-
-        if (!down && pressed[key]) {
-          document.dispatchEvent(new KeyboardEvent("keyup", {
-            key: key,
-            bubbles: true
-          }));
-        }
-
-        pressed[key] = down;
-      });
-    }
-
-    requestAnimationFrame(controllerLoop);
+  function visible(id) {
+    const el = document.getElementById(id);
+    return !!(el && el.classList.contains("on"));
   }
 
-  window.addEventListener("click", function startController() {
-    requestAnimationFrame(controllerLoop);
-    window.removeEventListener("click", startController);
-  }, { once: true });
+  function mode() {
+    if (visible("game")) return "space";
+    if (visible("bgame")) return "block";
+    if (visible("tgame")) return "tsunami";
+    if (visible("ngame")) return "nitro";
+    if (visible("vrgame")) return "void";
+    return "menu";
+  }
 
-  console.log("Blitzed Arcade Controller Support Loaded!");
+  function targetsFor(currentMode) {
+    const targets = [window];
+    if (currentMode === "nitro") {
+      const frame = document.getElementById("nfr");
+      if (frame && frame.contentWindow) targets.push(frame.contentWindow);
+    } else if (currentMode === "void") {
+      const frame = document.getElementById("vrfr");
+      if (frame && frame.contentWindow) targets.push(frame.contentWindow);
+    }
+    return targets;
+  }
+
+  function send(target, type, key) {
+    try {
+      target.dispatchEvent(new KeyboardEvent(type, {
+        key: key,
+        bubbles: true,
+        cancelable: true
+      }));
+    } catch (_) {}
+  }
+
+  function setKey(name, down, targets) {
+    const wasDown = !!held.get(name);
+    if (down === wasDown) return;
+    if (down) {
+      held.set(name, targets.slice());
+      targets.forEach(target => send(target, "keydown", name));
+    } else {
+      const oldTargets = held.get(name) || targets;
+      oldTargets.forEach(target => send(target, "keyup", name));
+      held.delete(name);
+    }
+  }
+
+  function button(gp, index) {
+    return !!(gp.buttons[index] && gp.buttons[index].pressed);
+  }
+
+  function axis(value) {
+    return Math.abs(value || 0) > 0.22 ? value : 0;
+  }
+
+  function visibleButtons() {
+    return Array.from(document.querySelectorAll("button:not(:disabled)"))
+      .filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== "hidden");
+  }
+
+  function navigateMenu(left, right, up, down, confirm) {
+    const list = visibleButtons();
+    if (!list.length) return;
+    let index = list.indexOf(document.activeElement);
+    if (left || up) {
+      index = index < 0 ? 0 : (index - 1 + list.length) % list.length;
+      list[index].focus();
+    } else if (right || down) {
+      index = index < 0 ? 0 : (index + 1) % list.length;
+      list[index].focus();
+    }
+    if (confirm) {
+      if (index < 0) {
+        list[0].focus();
+      } else {
+        list[index].click();
+      }
+    }
+  }
+
+  function releaseAll(targets) {
+    for (const key of Array.from(held.keys())) setKey(key, false, targets);
+  }
+
+  function loop() {
+    let gp = null;
+    try {
+      gp = Array.from(navigator.getGamepads ? navigator.getGamepads() : [])
+        .find(item => item && item.connected) || null;
+    } catch (_) {}
+
+    const currentMode = mode();
+    const targets = targetsFor(currentMode);
+
+    if (!gp) {
+      releaseAll(targets);
+      Object.keys(previous).forEach(key => previous[key] = false);
+      raf = requestAnimationFrame(loop);
+      return;
+    }
+
+    const x = axis(gp.axes[0]);
+    const y = axis(gp.axes[1]);
+    const left = x < 0 || button(gp, 14);
+    const right = x > 0 || button(gp, 15);
+    const up = y < 0 || button(gp, 12);
+    const down = y > 0 || button(gp, 13);
+    const cross = button(gp, 0);
+    const circle = button(gp, 1);
+    const square = button(gp, 2);
+    const triangle = button(gp, 3);
+    const l1 = button(gp, 4);
+    const r1 = button(gp, 5);
+    const l2 = !!(gp.buttons[6] && gp.buttons[6].value > 0.35);
+    const r2 = !!(gp.buttons[7] && gp.buttons[7].value > 0.35);
+
+    if (currentMode === "menu") {
+      releaseAll(targets);
+      if (left && !previous.left || up && !previous.up ||
+          right && !previous.right || down && !previous.down) {
+        navigateMenu(left && !previous.left, right && !previous.right,
+          up && !previous.up, down && !previous.down, false);
+      }
+      if (cross && !previous.cross) navigateMenu(false, false, false, false, true);
+      if (circle && !previous.circle) send(window, "keydown", "Escape");
+    } else {
+      // Space Dodger has native controls: left stick + Cross boost + Square ability.
+      // Only send Circle as pause/back there, avoiding duplicate boost/ability keys.
+      if (currentMode === "space") {
+        releaseAll(targets);
+        setKey("Escape", circle, targets);
+      } else {
+        setKey("ArrowLeft", left, targets);
+        setKey("ArrowRight", right, targets);
+        setKey("ArrowUp", up, targets);
+        setKey("ArrowDown", down, targets);
+        setKey("Escape", circle, targets);
+
+        if (currentMode === "block") {
+          setKey(" ", cross, targets);       // jump
+          setKey("e", square, targets);     // switch mine/place mode
+          setKey("1", triangle, targets);   // first hotbar slot
+          setKey("2", l1, targets);         // second hotbar slot
+          setKey("3", r1, targets);         // third hotbar slot
+          setKey("w", r2, targets);         // alternate jump
+        } else if (currentMode === "tsunami") {
+          setKey(" ", cross, targets);      // jump
+          setKey("q", square, targets);     // sell carried brainrots
+          setKey("Shift", l1 || r1 || l2 || r2, targets); // sprint
+        } else {
+          setKey(" ", cross || r2, targets); // Nitro / Void primary action
+          setKey("Shift", square || l1 || r1 || l2, targets);
+          setKey("e", triangle, targets);
+        }
+      }
+    }
+
+    previous.left = left; previous.right = right;
+    previous.up = up; previous.down = down;
+    previous.cross = cross; previous.circle = circle;
+    previous.square = square; previous.triangle = triangle;
+    previous.l1 = l1; previous.r1 = r1;
+    previous.l2 = l2; previous.r2 = r2;
+
+    raf = requestAnimationFrame(loop);
+  }
+
+  window.addEventListener("gamepadconnected", function (event) {
+    console.log("Blitzed Arcade: DualSense connected", event.gamepad.id);
+    if (!raf) raf = requestAnimationFrame(loop);
+  });
+  window.addEventListener("gamepaddisconnected", function () {
+    releaseAll([window]);
+  });
+
+  // Start polling; browsers expose the controller after the player presses a button.
+  if (!raf) raf = requestAnimationFrame(loop);
+  console.log("Blitzed Arcade: DualSense support ready");
 })();
 </script>
-<!-- END PS5 CONTROLLER SUPPORT -->
+<!-- END PS5 DUALSENSE SUPPORT -->
  
 </body>
 </html>
