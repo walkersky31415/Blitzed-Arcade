@@ -869,8 +869,7 @@ else{$("ov").classList.remove("on");last=performance.now()}}
 
 let tilt=0;addEventListener("deviceorientation",e=>{if(e.gamma!=null)tilt=e.gamma});
 let padOff=0;
-function pad(){let l=null;if(!padOff&&navigator.getGamepads){try{l=[...navigator.getGamepads()].find(x=>x)}catch(e){padOff=1}}if(!l)return{x:0,b:0,a:0};
-return{x:Math.abs(l.axes[0])>.2?l.axes[0]:0,b:!!(l.buttons[0]&&l.buttons[0].pressed),a:!!(l.buttons[2]&&l.buttons[2].pressed)}}
+function pad(){let l=null;if(!padOff&&navigator.getGamepads){try{l=[...navigator.getGamepads()].find(x=>x&&x.connected)}catch(e){padOff=1}}if(!l)return{x:0,b:0,a:0};const bt=i=>!!(l.buttons[i]&&l.buttons[i].pressed),ax=Math.abs(l.axes[0]||0)>.2?l.axes[0]:0;return{x:ax||(bt(14)?-1:bt(15)?1:0),b:bt(0)||bt(7),a:bt(2)||bt(3)||bt(4)||bt(5)}}
 function clr(r){g.rocks=g.rocks.filter(k=>{if(Math.hypot(k.x-P.x,k.y-P.y)<r*(1+.1*AL)){boom(k.x,k.y);return false}return true})}
 const AB={NOVA:["Dash",8,()=>{g.dash=25}],EMBER:["Blast",12,()=>clr(170)],PHANTOM:["Phase",14,()=>{g.inv=100}],GOLDEN:["Coin pull",12,()=>{g.coins.forEach(c=>{c.x=P.x;c.y=P.y})}],VOID:["Freeze",16,()=>{g.frz=120}],GALAXY:["Nova",20,()=>clr(9999)],AURORA:["Aegis",20,()=>{g.shield=1;g.inv=60}],SOLAR:["Overdrive",22,()=>{g.dbl=420}],ECLIPSE:["Singularity",25,()=>clr(340)],OMEGA:["Time warp",25,()=>{g.slowT=480;g.dbl=480}],TITAN:["Titan wrath",30,()=>{clr(9999);g.shield=1;g.inv=90}]};
 let AL=0;
@@ -1101,7 +1100,7 @@ if(keys.b&&bp.g)bp.vy=-11.5;bp.vy=Math.min(bp.vy+32*s,25);
 const nx=bp.x+(keys.r-keys.l)*sp*s;if(!bhit(nx,bp.y))bp.x=nx;
 const ny=bp.y+bp.vy*s;if(!bhit(bp.x,ny)){bp.y=ny;bp.g=0}else{if(bp.vy>0)bp.g=1;bp.vy=0}
 const c=me.bc,[tx,ty]=bTarget(),id=inb(tx,ty)?bw[ty*BWd+tx]:0;
-if(bm.d&&!bplace&&id&&breach(tx,ty)&&c.tool>=BK[id][3]){if(!bmine||bmine.x!==tx||bmine.y!==ty)bmine={x:tx,y:ty,t:0};bmine.t+=s*(1+c.tool*.8+.1*lv("Boost Core"))*infm("blk")/BK[id][2];
+if(bm.d&&bplace){bPlace()}else if(bm.d&&!bplace&&id&&breach(tx,ty)&&c.tool>=BK[id][3]){if(!bmine||bmine.x!==tx||bmine.y!==ty)bmine={x:tx,y:ty,t:0};bmine.t+=s*(1+c.tool*.8+.1*lv("Boost Core"))*infm("blk")/BK[id][2];
 if(bmine.t>=1){bw[ty*BWd+tx]=0;c.inv[id]=(c.inv[id]||0)+1;bmine=null;beep(200,.05,"square")}}else bmine=null;bZ(s,tx,ty)}
 let bz=[],bhp=10,bT=0,bzT=0,bhurt=0;const bNight=()=>(bT%80)>50;
 function bZ(s,tx,ty){bT+=s;bhurt-=s;
@@ -1145,6 +1144,7 @@ bz.forEach(z=>bMan(z.x*TS-cx,z.y*TS-cy,"#2f6bb0","#5aa05a","#2b4a22",bn*.35,1));
 if(bNight()){bx.fillStyle="rgba(5,10,40,.45)";bx.fillRect(0,0,bW,bH)}
 const px=bp.x*TS-cx,py=bp.y*TS-cy;bMan(px,py,SK[me.skin]?SK[me.skin][1]:"#55b6ff","#f1c9a5","#4a2f18",(keys.l||keys.r)?bn*.35:0,0)}
 bcv.addEventListener("pointerdown",e=>{bm.x=e.offsetX;bm.y=e.offsetY;bm.d=1;if(bRun&&(e.button===2||bplace))bPlace()});
+window.__baSetBlockPointer=(x,y,down,place)=>{bm.x=x;bm.y=y;bm.d=!!down;if(place&&down)bPlace()};
 bcv.addEventListener("pointermove",e=>{bm.x=e.offsetX;bm.y=e.offsetY});
 ["pointerup","pointerleave","pointercancel"].forEach(v=>bcv.addEventListener(v,()=>bm.d=0));bcv.addEventListener("contextmenu",e=>e.preventDefault());
 const BM={a:"l",A:"l",ArrowLeft:"l",d:"r",D:"r",ArrowRight:"r",w:"b",W:"b",ArrowUp:"b"," ":"b"};
@@ -1686,194 +1686,111 @@ if(!db.set.seen){db.set.seen=1;save()}
 <script>
 (function () {
   "use strict";
+  const held = new Map(), prev = Object.create(null);
+  let raf = 0, aimX = 0, aimY = 0;
 
-  // Space Dodger already reads the Gamepad API directly in its own game loop.
-  // This bridge supplies keyboard-style controls to the other parent-page games
-  // and the same-origin Nitro Run / Void Runner game frames.
-  const held = new Map();
-  const previous = Object.create(null);
-  let raf = 0;
-
-  function visible(id) {
-    const el = document.getElementById(id);
-    return !!(el && el.classList.contains("on"));
-  }
-
+  const btn = (gp, i) => !!(gp.buttons[i] && gp.buttons[i].pressed);
+  const trig = (gp, i) => !!(gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > .35));
+  const axis = v => Math.abs(v || 0) > .22 ? v : 0;
+  const visible = id => { const el=document.getElementById(id); return !!(el&&el.classList.contains("on")); };
   function mode() {
-    if (visible("game")) return "space";
-    if (visible("bgame")) return "block";
-    if (visible("tgame")) return "tsunami";
-    if (visible("ngame")) return "nitro";
-    if (visible("vrgame")) return "void";
+    if(visible("game")) return "space";
+    if(visible("bgame")) return "block";
+    if(visible("tgame")) return "tsunami";
+    if(visible("ngame")) return "nitro";
+    if(visible("vrgame")) return "void";
     return "menu";
   }
-
-  function targetsFor(currentMode) {
-    const targets = [window];
-    if (currentMode === "nitro") {
-      const frame = document.getElementById("nfr");
-      if (frame && frame.contentWindow) targets.push(frame.contentWindow);
-    } else if (currentMode === "void") {
-      const frame = document.getElementById("vrfr");
-      if (frame && frame.contentWindow) targets.push(frame.contentWindow);
-    }
-    return targets;
+  function targetsFor(m) {
+    const a=[window];
+    const id=m==="nitro"?"nfr":m==="void"?"vrfr":null;
+    const f=id&&document.getElementById(id);
+    if(f&&f.contentWindow) a.push(f.contentWindow);
+    return a;
   }
-
-  function send(target, type, key) {
-    try {
-      target.dispatchEvent(new KeyboardEvent(type, {
-        key: key,
-        bubbles: true,
-        cancelable: true
-      }));
-    } catch (_) {}
+  function send(target,type,key) {
+    const code=key===" "?"Space":key==="Shift"?"ShiftLeft":key.length===1?"Key"+key.toUpperCase():key;
+    try { target.dispatchEvent(new KeyboardEvent(type,{key,code,bubbles:true,cancelable:true})); } catch(_){}
   }
-
-  function setKey(name, down, targets) {
-    const wasDown = !!held.get(name);
-    if (down === wasDown) return;
-    if (down) {
-      held.set(name, targets.slice());
-      targets.forEach(target => send(target, "keydown", name));
-    } else {
-      const oldTargets = held.get(name) || targets;
-      oldTargets.forEach(target => send(target, "keyup", name));
-      held.delete(name);
-    }
+  function setKey(k,on,targets) {
+    if(!!held.has(k)===!!on)return;
+    if(on){held.set(k,targets.slice());targets.forEach(t=>send(t,"keydown",k));}
+    else{(held.get(k)||targets).forEach(t=>send(t,"keyup",k));held.delete(k);}
   }
-
-  function button(gp, index) {
-    return !!(gp.buttons[index] && gp.buttons[index].pressed);
+  function releaseAll(targets){for(const k of Array.from(held.keys()))setKey(k,false,targets);}
+  function menuMove(dx,dy,confirm) {
+    const list=Array.from(document.querySelectorAll("button:not(:disabled)")).filter(e=>e.getClientRects().length&&getComputedStyle(e).visibility!=="hidden");
+    if(!list.length)return;
+    let i=list.indexOf(document.activeElement);
+    if(dx||dy){i=i<0?0:(i+1)%list.length;list[i].focus();}
+    if(confirm){if(i<0)list[0].click();else list[i].click();}
   }
-
-  function axis(value) {
-    return Math.abs(value || 0) > 0.22 ? value : 0;
-  }
-
-  function visibleButtons() {
-    return Array.from(document.querySelectorAll("button:not(:disabled)"))
-      .filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== "hidden");
-  }
-
-  function navigateMenu(left, right, up, down, confirm) {
-    const list = visibleButtons();
-    if (!list.length) return;
-    let index = list.indexOf(document.activeElement);
-    if (left || up) {
-      index = index < 0 ? 0 : (index - 1 + list.length) % list.length;
-      list[index].focus();
-    } else if (right || down) {
-      index = index < 0 ? 0 : (index + 1) % list.length;
-      list[index].focus();
-    }
-    if (confirm) {
-      if (index < 0) {
-        list[0].focus();
-      } else {
-        list[index].click();
+  function loop(){
+    let gp=null;try{gp=Array.from(navigator.getGamepads?navigator.getGamepads():[]).find(g=>g&&g.connected)||null;}catch(_){}
+    const m=mode(),t=targetsFor(m);
+    if(!gp){releaseAll(t);Object.keys(prev).forEach(k=>prev[k]=false);raf=requestAnimationFrame(loop);return;}
+    const x=axis(gp.axes[0]),y=axis(gp.axes[1]);
+    const left=x<-.22||btn(gp,14),right=x>.22||btn(gp,15),up=y<-.22||btn(gp,12),down=y>.22||btn(gp,13);
+    const cross=btn(gp,0),circle=btn(gp,1),square=btn(gp,2),triangle=btn(gp,3);
+    const l1=btn(gp,4),r1=btn(gp,5),l2=trig(gp,6),r2=trig(gp,7),options=btn(gp,9);
+    if(m==="menu"){
+      releaseAll(t);
+      if((left&&!prev.left)||(right&&!prev.right)||(up&&!prev.up)||(down&&!prev.down))menuMove(left||up? -1:1,0,false);
+      if(cross&&!prev.cross)menuMove(0,0,true);
+      if(circle&&!prev.circle)send(window,"keydown","Escape");
+    } else if(m==="space"){
+      releaseAll(t);
+      // Space Dodger reads Gamepad API itself: left stick/D-pad, Cross or R2 boost,
+      // Square/Triangle/L1/R1 ability. Circle or Options pauses.
+      setKey("Escape",circle||options,t);
+    } else if(m==="block"){
+      // Minecraft-style: left stick move, Cross jump, R2 mine, L2 place,
+      // L1/R1 cycle hotbar, Square toggles Mine/Place mode.
+      setKey("ArrowLeft",left,t);setKey("ArrowRight",right,t);
+      setKey(" ",cross,t);
+      setKey("Escape",circle,t);
+      if(square&&!prev.square){send(window,"keydown","e");send(window,"keyup","e");}
+      if(triangle&&!prev.triangle){send(window,"keydown","e");send(window,"keyup","e");}
+      if(l1&&!prev.l1){send(window,"keydown",String(Math.max(1,((window.__baHotbar||0)+3)%4+1)));send(window,"keyup",String(Math.max(1,((window.__baHotbar||0)+3)%4+1)));window.__baHotbar=((window.__baHotbar||0)+3)%4; }
+      if(r1&&!prev.r1){window.__baHotbar=((window.__baHotbar||0)+1)%4;const k=String(window.__baHotbar+1);send(window,"keydown",k);send(window,"keyup",k);}
+      const canvas=document.getElementById("bcv");
+      if(canvas){
+        const cx=canvas.clientWidth/2,cy=canvas.clientHeight/2;
+        aimX=Math.max(0,Math.min(canvas.clientWidth,cx+(axis(gp.axes[2])||0)*canvas.clientWidth*.42));
+        aimY=Math.max(0,Math.min(canvas.clientHeight,cy+(axis(gp.axes[3])||0)*canvas.clientHeight*.42));
+        if(Math.abs(axis(gp.axes[2]))>.15||Math.abs(axis(gp.axes[3]))>.15){const rect=canvas.getBoundingClientRect();window.__baAimX=aimX;window.__baAimY=aimY;}
       }
-    }
-  }
-
-  function releaseAll(targets) {
-    for (const key of Array.from(held.keys())) setKey(key, false, targets);
-  }
-
-  function loop() {
-    let gp = null;
-    try {
-      gp = Array.from(navigator.getGamepads ? navigator.getGamepads() : [])
-        .find(item => item && item.connected) || null;
-    } catch (_) {}
-
-    const currentMode = mode();
-    const targets = targetsFor(currentMode);
-
-    if (!gp) {
-      releaseAll(targets);
-      Object.keys(previous).forEach(key => previous[key] = false);
-      raf = requestAnimationFrame(loop);
-      return;
-    }
-
-    const x = axis(gp.axes[0]);
-    const y = axis(gp.axes[1]);
-    const left = x < 0 || button(gp, 14);
-    const right = x > 0 || button(gp, 15);
-    const up = y < 0 || button(gp, 12);
-    const down = y > 0 || button(gp, 13);
-    const cross = button(gp, 0);
-    const circle = button(gp, 1);
-    const square = button(gp, 2);
-    const triangle = button(gp, 3);
-    const l1 = button(gp, 4);
-    const r1 = button(gp, 5);
-    const l2 = !!(gp.buttons[6] && gp.buttons[6].value > 0.35);
-    const r2 = !!(gp.buttons[7] && gp.buttons[7].value > 0.35);
-
-    if (currentMode === "menu") {
-      releaseAll(targets);
-      if (left && !previous.left || up && !previous.up ||
-          right && !previous.right || down && !previous.down) {
-        navigateMenu(left && !previous.left, right && !previous.right,
-          up && !previous.up, down && !previous.down, false);
+      const bmState=window.__baBlockMouse;
+      if(!bmState)window.__baBlockMouse={};
+      const bmouse=window.__baBlockMouse;
+      const downNow=r2||square, placeNow=l2;
+      if(canvas){
+        const rect=canvas.getBoundingClientRect();
+        // Keep the in-game cursor aimed by the right stick; triggers act like mouse buttons.
+        const mx=window.__baAimX==null?canvas.clientWidth*.62:window.__baAimX;
+        const my=window.__baAimY==null?canvas.clientHeight*.5:window.__baAimY;
+        if(typeof window.__baSetBlockPointer==="function")window.__baSetBlockPointer(mx,my,downNow||placeNow,placeNow);
       }
-      if (cross && !previous.cross) navigateMenu(false, false, false, false, true);
-      if (circle && !previous.circle) send(window, "keydown", "Escape");
-    } else {
-      // Space Dodger has native controls: left stick + Cross boost + Square ability.
-      // Only send Circle as pause/back there, avoiding duplicate boost/ability keys.
-      if (currentMode === "space") {
-        releaseAll(targets);
-        setKey("Escape", circle, targets);
-      } else {
-        setKey("ArrowLeft", left, targets);
-        setKey("ArrowRight", right, targets);
-        setKey("ArrowUp", up, targets);
-        setKey("ArrowDown", down, targets);
-        setKey("Escape", circle, targets);
-
-        if (currentMode === "block") {
-          setKey(" ", cross, targets);       // jump
-          setKey("e", square, targets);     // switch mine/place mode
-          setKey("1", triangle, targets);   // first hotbar slot
-          setKey("2", l1, targets);         // second hotbar slot
-          setKey("3", r1, targets);         // third hotbar slot
-          setKey("w", r2, targets);         // alternate jump
-        } else if (currentMode === "tsunami") {
-          setKey(" ", cross, targets);      // jump
-          setKey("q", square, targets);     // sell carried brainrots
-          setKey("Shift", l1 || r1 || l2 || r2, targets); // sprint
-        } else {
-          setKey(" ", cross || r2, targets); // Nitro / Void primary action
-          setKey("Shift", square || l1 || r1 || l2, targets);
-          setKey("e", triangle, targets);
-        }
-      }
+    } else if(m==="tsunami"){
+      setKey("ArrowLeft",left,t);setKey("ArrowRight",right,t);
+      setKey(" ",cross,t);setKey("Shift",l1||r1||l2||r2,t);
+      setKey("q",square,t);setKey("Escape",circle||options,t);
+    } else if(m==="nitro"){
+      // Nitro Run's embedded game listens to KeyboardEvent.code (not just key).
+      setKey("ArrowLeft",left,t);setKey("ArrowRight",right,t);
+      setKey(" ",cross||r2,t);setKey("Escape",circle||options,t);
+    } else if(m==="void"){
+      setKey("ArrowLeft",left,t);setKey("ArrowRight",right,t);
+      setKey(" ",cross||r2,t);setKey("Escape",circle||options,t);
     }
-
-    previous.left = left; previous.right = right;
-    previous.up = up; previous.down = down;
-    previous.cross = cross; previous.circle = circle;
-    previous.square = square; previous.triangle = triangle;
-    previous.l1 = l1; previous.r1 = r1;
-    previous.l2 = l2; previous.r2 = r2;
-
-    raf = requestAnimationFrame(loop);
+    prev.left=left;prev.right=right;prev.up=up;prev.down=down;
+    prev.cross=cross;prev.circle=circle;prev.square=square;prev.triangle=triangle;
+    prev.l1=l1;prev.r1=r1;prev.l2=l2;prev.r2=r2;prev.options=options;
+    raf=requestAnimationFrame(loop);
   }
-
-  window.addEventListener("gamepadconnected", function (event) {
-    console.log("Blitzed Arcade: DualSense connected", event.gamepad.id);
-    if (!raf) raf = requestAnimationFrame(loop);
-  });
-  window.addEventListener("gamepaddisconnected", function () {
-    releaseAll([window]);
-  });
-
-  // Start polling; browsers expose the controller after the player presses a button.
-  if (!raf) raf = requestAnimationFrame(loop);
-  console.log("Blitzed Arcade: DualSense support ready");
+  window.addEventListener("gamepadconnected",e=>{console.log("DualSense connected",e.gamepad.id);if(!raf)raf=requestAnimationFrame(loop);});
+  window.addEventListener("gamepaddisconnected",()=>releaseAll([window]));
+  if(!raf)raf=requestAnimationFrame(loop);
 })();
 </script>
 <!-- END PS5 DUALSENSE SUPPORT -->
